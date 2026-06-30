@@ -178,7 +178,7 @@ jobs:
             --notes "**Full datapack build** (pack_format 101)." \
             --latest \
             "$ZIP#dataLib-full.zip"
-        summary:
+    summary:
        # ─────────────── SON ÖZET ───────────────
       - name: Summary
         run: |
