@@ -1,0 +1,205 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Validate JSON
+        run: |
+          echo "Checking JSON..."
+          find . -name "*.json" -not -path "./.git/*" -print0 | xargs -0 -n1 jq empty
+
+      - name: Lint mcfunction files (pre-check)
+        run: |
+          echo "Scanning .mcfunction files..."
+          FILES=$(find . -name "*.mcfunction" -not -path "./.git/*")
+          if [ -z "$FILES" ]; then
+            echo "No .mcfunction files found."
+            exit 0
+          fi
+          ERRORS=0
+          while IFS= read -r file; do
+            if head -c 3 "$file" | grep -qP '^\xef\xbb\xbf'; then
+              echo "BOM detected: $file"
+              ERRORS=$((ERRORS + 1))
+            fi
+            if grep -Pql '\x00' "$file"; then
+              echo "Null byte detected: $file"
+              ERRORS=$((ERRORS + 1))
+            fi
+            if file "$file" | grep -q "CRLF"; then
+              echo "CRLF line endings: $file"
+              ERRORS=$((ERRORS + 1))
+            fi
+          done <<< "$FILES"
+          if [ "$ERRORS" -gt 0 ]; then
+            echo "$ERRORS issue(s) found in .mcfunction files."
+            exit 1
+          fi
+          echo "Pre-check passed."
+
+      - name: Install mecha
+        run: pip install git+https://github.com/mcbeet/mecha.git --break-system-packages -q
+
+      - name: Patch mecha compat (colon-space in storage paths + 26.1 time syntax)
+        run: |
+          find . -name "*.mcfunction" -not -path "./.git/*" \
+            -exec grep -lP '[\w.-]+: _' {} \; | \
+            xargs --no-run-if-empty sed -i -E 's/([a-z0-9._-]+): _/\1:_/g'
+          find . -name "*.mcfunction" -not -path "./.git/*" \
+            -exec grep -l 'time of ' {} \; | \
+            xargs --no-run-if-empty sed -i -E 's/time of [a-z0-9_:.-]+ /time /g'
+          find . -name "*.mcfunction" -not -path "./.git/*" \
+            -exec grep -l 'time query day repetition' {} \; | \
+            xargs --no-run-if-empty sed -i 's/time query day repetition/time query daytime/g'
+
+      - name: Validate mcfunction syntax (mecha)
+        run: mecha .
+
+      - name: Validate pack.mcmeta
+        run: |
+          if [ ! -f pack.mcmeta ]; then
+            echo "pack.mcmeta is missing!"
+            exit 1
+          fi
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # 🔒 Repo lock — prevent running from wrong fork
+      - name: Repo lock
+        run: |
+          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib" ]; then
+            echo "::error::This workflow may only run in runtoolkit/dataLib."
+            exit 1
+          fi
+
+      # 📁 Prepare build directory
+      - name: Prepare build directory
+        run: mkdir -p build
+
+      # 📂 Copy base layer (excluding overlay directories)
+      - name: Copy base layer
+        run: |
+          OVERLAY_DIRS="1_20_3 1_20_5 _pre_1_21_4 compat_1_21_4 1_21_5 1_21_6 26_1 26_2"
+          EXCLUDES=""
+          for d in $OVERLAY_DIRS; do
+            EXCLUDES="$EXCLUDES --exclude=$d"
+          done
+          rsync -a $EXCLUDES \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='.gitattributes' \
+            --exclude='.gitignore' \
+            --exclude='README.md' \
+            --exclude='version.json' \
+            --exclude='dependencies.json' \
+            ./ build/
+
+      # 🧩 pack.mcmeta — update to latest pack_format (full build)
+      - name: Patch pack.mcmeta
+        run: |
+          jq \
+            --argjson fmt 101 \
+            '
+              .pack.pack_format = $fmt |
+              if .overlays.entries then
+                .overlays.entries = []
+              else . end
+            ' \
+            build/pack.mcmeta > build/pack.mcmeta.tmp
+          mv build/pack.mcmeta.tmp build/pack.mcmeta
+
+      # 🔍 Sanity check
+      - name: Validate pack.mcmeta
+        run: |
+          jq empty build/pack.mcmeta && echo "pack.mcmeta is valid JSON." \
+            || { echo "::error::pack.mcmeta is malformed!"; exit 1; }
+
+      # 📦 Zip
+      - name: Package datapack
+        run: |
+          cd build
+          zip -r ../dataLib-full.zip .
+          echo "Archive size: $(du -sh ../dataLib-full.zip | cut -f1)"
+
+      # 🚀 Upload as artifact
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dataLib-full
+          path: dataLib-full.zip
+          retention-days: 14
+          if-no-files-found: error
+
+  # ───────────────────────────────────────────────
+  # Release — only on main pushes
+  # ───────────────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+
+      # 🔒 Repo lock
+      - name: Repo lock
+        run: |
+          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib" ]; then
+            echo "::error::This workflow may only run in runtoolkit/dataLib."
+            exit 1
+          fi
+
+      # 📥 Download full ZIP from artifact
+      - uses: actions/download-artifact@v8
+        with:
+          name: dataLib-full
+          path: dist/
+
+      # 🏷️ Read version number from pack.mcmeta
+      - name: Read version
+        id: ver
+        run: |
+          VERSION=$(jq -r '
+            .pack.description |
+            if type == "array" then
+              .[] | select(type == "object") |
+              .text // empty
+            else . end |
+            select(test("^\\s*\\|\\s*v[0-9]")) |
+            gsub("^\\s*\\|\\s*"; "") | ltrimstr(" ")
+          ' pack.mcmeta | head -1)
+          if [ -z "$VERSION" ]; then
+            VERSION=$(jq -r '.pack.description' pack.mcmeta | grep -oP 'v[\d.]+' | head -1)
+          fi
+          echo "version=${VERSION:-latest}" >> "$GITHUB_OUTPUT"
+
+      # 🚀 Create or update GitHub Release
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.ver.outputs.version }}"
+          ZIP="dist/dataLib-full.zip"
+          # Delete existing tag if it exists
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
+          gh release create "$TAG" \
+            --title "dataLib $TAG" \
+            --notes "**Full datapack build** (pack_format 101)." \
+            --latest \
+            "$ZIP#dataLib-full.zip"
