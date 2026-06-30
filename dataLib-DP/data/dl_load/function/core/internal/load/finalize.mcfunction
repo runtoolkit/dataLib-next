@@ -20,3 +20,5 @@ playsound datalib:load.success master @a ~ ~ ~ 0.6 1.2
 data modify storage datalib:engine _log_add_tmp.message set value "[Load] finalize — engine ready"
 function datalib:systems/log/add with storage datalib:engine _log_add_tmp
 data remove storage datalib:engine _log_add_tmp.message
+
+tag @s remove datalib.loadFail
