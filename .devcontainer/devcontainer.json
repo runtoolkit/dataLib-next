@@ -1,0 +1,14 @@
+{
+  "name": "dataLib & Python Dev",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "SPGoding.datapack-language-server",
+        "ms-python.python",
+        "ms-python.flake8",
+        "dlyz.md-link-checker"
+      ],
+      "settings": {}
+    }
+  }
+}
