@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
+    branches: [ main ]
   pull_request:
+    branches: [ main ]
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 
 jobs:
   lint:
@@ -15,9 +16,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Validate JSON
+      - name: Validate JSON files
         run: |
-          echo "Checking JSON..."
+          echo "Checking all JSON files..."
           find . -name "*.json" -not -path "./.git/*" -print0 | xargs -0 -n1 jq empty
 
       - name: Lint mcfunction files (pre-check)
@@ -28,23 +29,25 @@ jobs:
             echo "No .mcfunction files found."
             exit 0
           fi
+
           ERRORS=0
           while IFS= read -r file; do
             if head -c 3 "$file" | grep -qP '^\xef\xbb\xbf'; then
-              echo "BOM detected: $file"
+              echo "::error::BOM detected: $file"
               ERRORS=$((ERRORS + 1))
             fi
             if grep -Pql '\x00' "$file"; then
-              echo "Null byte detected: $file"
+              echo "::error::Null byte detected: $file"
               ERRORS=$((ERRORS + 1))
             fi
             if file "$file" | grep -q "CRLF"; then
-              echo "CRLF line endings: $file"
+              echo "::error::CRLF line endings: $file"
               ERRORS=$((ERRORS + 1))
             fi
           done <<< "$FILES"
+
           if [ "$ERRORS" -gt 0 ]; then
-            echo "$ERRORS issue(s) found in .mcfunction files."
+            echo "::error::$ERRORS issue(s) found in .mcfunction files."
             exit 1
           fi
           echo "Pre-check passed."
@@ -52,14 +55,17 @@ jobs:
       - name: Install mecha
         run: pip install git+https://github.com/mcbeet/mecha.git --break-system-packages -q
 
-      - name: Patch mecha compat (colon-space in storage paths + 26.1 time syntax)
+      - name: Patch mecha compatibility
         run: |
+          echo "Applying compatibility patches..."
           find . -name "*.mcfunction" -not -path "./.git/*" \
             -exec grep -lP '[\w.-]+: _' {} \; | \
             xargs --no-run-if-empty sed -i -E 's/([a-z0-9._-]+): _/\1:_/g'
+
           find . -name "*.mcfunction" -not -path "./.git/*" \
             -exec grep -l 'time of ' {} \; | \
             xargs --no-run-if-empty sed -i -E 's/time of [a-z0-9_:.-]+ /time /g'
+
           find . -name "*.mcfunction" -not -path "./.git/*" \
             -exec grep -l 'time query day repetition' {} \; | \
             xargs --no-run-if-empty sed -i 's/time query day repetition/time query daytime/g'
@@ -69,19 +75,18 @@ jobs:
 
       - name: Validate pack.mcmeta
         run: |
-         cd dataLib-DP 
-          if [ ! -f pack.mcmeta ]; then
-            echo "pack.mcmeta is missing!"
+          if [ ! -f dataLib-DP/pack.mcmeta ]; then
+            echo "::error::pack.mcmeta is missing!"
             exit 1
           fi
-          cd ..
+          jq empty dataLib-DP/pack.mcmeta && echo "pack.mcmeta is valid."
 
   build:
     runs-on: ubuntu-latest
+    needs: lint
     steps:
       - uses: actions/checkout@v7
 
-      # 🔒 Repo lock — prevent running from wrong fork
       - name: Repo lock
         run: |
           if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib-next" ]; then
@@ -89,34 +94,34 @@ jobs:
             exit 1
           fi
 
-      # 📁 Prepare build directory
       - name: Prepare build directory
-        run: mkdir -p build
+        run: |
+          mkdir -p build/dataLib-DP
+          shopt -s dotglob
+          cp -r dataLib-DP/* build/dataLib-DP/ 2>/dev/null || true
+          if [ -f pack.mcmeta ]; then
+            cp pack.mcmeta build/dataLib-DP/
+          fi
 
-      # 🔍 Sanity check
       - name: Validate pack.mcmeta
         run: |
-          jq empty build/pack.mcmeta && echo "pack.mcmeta is valid JSON." \
+          jq empty build/dataLib-DP/pack.mcmeta && echo "pack.mcmeta is valid." \
             || { echo "::error::pack.mcmeta is malformed!"; exit 1; }
 
-      # 📦 Zip
       - name: Package datapack
         run: |
           cd build
           zip -r ../dataLib-full.zip dataLib-DP
           echo "Archive size: $(du -sh ../dataLib-full.zip | cut -f1)"
 
-      # 🚀 Upload as artifact
-      - uses: actions/upload-artifact@v7
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
         with:
           name: dataLib-full
           path: dataLib-full.zip
           retention-days: 14
           if-no-files-found: error
 
-  # ───────────────────────────────────────────────
-  # Release — only on main pushes
-  # ───────────────────────────────────────────────
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -126,7 +131,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # 🔒 Repo lock
       - name: Repo lock
         run: |
           if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib-next" ]; then
@@ -134,13 +138,12 @@ jobs:
             exit 1
           fi
 
-      # 📥 Download full ZIP from artifact
-      - uses: actions/download-artifact@v8
+      - name: Download artifact
+        uses: actions/download-artifact@v8
         with:
           name: dataLib-full
           path: dist/
 
-      # 🏷️ Read version number from pack.mcmeta
       - name: Read version
         id: ver
         run: |
@@ -152,24 +155,40 @@ jobs:
             else . end |
             select(test("^\\s*\\|\\s*v[0-9]")) |
             gsub("^\\s*\\|\\s*"; "") | ltrimstr(" ")
-          ' pack.mcmeta | head -1)
+          ' dataLib-DP/pack.mcmeta 2>/dev/null | head -1)
+
           if [ -z "$VERSION" ]; then
-            VERSION=$(jq -r '.pack.description' pack.mcmeta | grep -oP 'v[\d.]+' | head -1)
+            VERSION=$(jq -r '.pack.description' dataLib-DP/pack.mcmeta 2>/dev/null | grep -oP 'v[\d.]+' | head -1)
           fi
+
           echo "version=${VERSION:-latest}" >> "$GITHUB_OUTPUT"
 
-      # 🚀 Create or update GitHub Release
       - name: Create or update release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ steps.ver.outputs.version }}"
           ZIP="dist/dataLib-full.zip"
-          # Delete existing tag if it exists
+
           gh release delete "$TAG" --yes 2>/dev/null || true
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
+
           gh release create "$TAG" \
             --title "dataLib $TAG" \
             --notes "**Full datapack build** (pack_format 101)." \
             --latest \
             "$ZIP#dataLib-full.zip"
+
+      # ─────────────── SON ÖZET ───────────────
+      - name: Summary
+        run: |
+          echo "## ✅ Build & Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** $GITHUB_REPOSITORY" >> $GITHUB_STEP_SUMMARY
+          echo "**Branch:** $GITHUB_REF_NAME" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** ${{ steps.ver.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Success" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📦 Full datapack: \`dataLib-full.zip\`" >> $GITHUB_STEP_SUMMARY
+          echo "📥 Download from the latest release." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "*Generated on $(date -u +"%Y-%m-%d %H:%M:%S UTC")*" >> $GITHUB_STEP_SUMMARY
