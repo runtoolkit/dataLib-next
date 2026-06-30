@@ -178,8 +178,8 @@ jobs:
             --notes "**Full datapack build** (pack_format 101)." \
             --latest \
             "$ZIP#dataLib-full.zip"
-
-      # ─────────────── SON ÖZET ───────────────
+        summary:
+       # ─────────────── SON ÖZET ───────────────
       - name: Summary
         run: |
           echo "## ✅ Build & Release Summary" >> $GITHUB_STEP_SUMMARY
