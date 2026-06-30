@@ -69,10 +69,12 @@ jobs:
 
       - name: Validate pack.mcmeta
         run: |
+         cd dataLib-DP 
           if [ ! -f pack.mcmeta ]; then
             echo "pack.mcmeta is missing!"
             exit 1
           fi
+          cd ..
 
   build:
     runs-on: ubuntu-latest
@@ -82,46 +84,14 @@ jobs:
       # 🔒 Repo lock — prevent running from wrong fork
       - name: Repo lock
         run: |
-          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib" ]; then
-            echo "::error::This workflow may only run in runtoolkit/dataLib."
+          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib-next" ]; then
+            echo "::error::This workflow may only run in runtoolkit/dataLib-next."
             exit 1
           fi
 
       # 📁 Prepare build directory
       - name: Prepare build directory
         run: mkdir -p build
-
-      # 📂 Copy base layer (excluding overlay directories)
-      - name: Copy base layer
-        run: |
-          OVERLAY_DIRS="1_20_3 1_20_5 _pre_1_21_4 compat_1_21_4 1_21_5 1_21_6 26_1 26_2"
-          EXCLUDES=""
-          for d in $OVERLAY_DIRS; do
-            EXCLUDES="$EXCLUDES --exclude=$d"
-          done
-          rsync -a $EXCLUDES \
-            --exclude='.git' \
-            --exclude='.github' \
-            --exclude='.gitattributes' \
-            --exclude='.gitignore' \
-            --exclude='README.md' \
-            --exclude='version.json' \
-            --exclude='dependencies.json' \
-            ./ build/
-
-      # 🧩 pack.mcmeta — update to latest pack_format (full build)
-      - name: Patch pack.mcmeta
-        run: |
-          jq \
-            --argjson fmt 101 \
-            '
-              .pack.pack_format = $fmt |
-              if .overlays.entries then
-                .overlays.entries = []
-              else . end
-            ' \
-            build/pack.mcmeta > build/pack.mcmeta.tmp
-          mv build/pack.mcmeta.tmp build/pack.mcmeta
 
       # 🔍 Sanity check
       - name: Validate pack.mcmeta
@@ -133,7 +103,7 @@ jobs:
       - name: Package datapack
         run: |
           cd build
-          zip -r ../dataLib-full.zip .
+          zip -r ../dataLib-full.zip dataLib-DP
           echo "Archive size: $(du -sh ../dataLib-full.zip | cut -f1)"
 
       # 🚀 Upload as artifact
@@ -159,8 +129,8 @@ jobs:
       # 🔒 Repo lock
       - name: Repo lock
         run: |
-          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib" ]; then
-            echo "::error::This workflow may only run in runtoolkit/dataLib."
+          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib-next" ]; then
+            echo "::error::This workflow may only run in runtoolkit/dataLib-next."
             exit 1
           fi
 
