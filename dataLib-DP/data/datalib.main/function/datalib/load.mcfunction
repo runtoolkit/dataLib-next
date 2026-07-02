@@ -2,5 +2,5 @@
 
 execute if data storage datalib:engine {global:{loaded:1b}} run return 0
 
-scoreboard objectives add dl.reload dummy
+scoreboard objectives add dl.reload trigger
 function #load:_private/load
