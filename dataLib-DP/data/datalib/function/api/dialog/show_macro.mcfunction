@@ -7,7 +7,7 @@
 #   data modify storage datalib:engine dialog.DATA set value '{...}'
 #   function datalib:api/dialog/show_macro
 #
-# BUGFIX v6.0.1: this file was missing from the base overlay entirely.
+# BUGFIX v6.0.0: this file was missing from the base overlay entirely.
 # Without it, any pack calling datalib:api/dialog/show_macro on 1.20.3–1.21.5
 # would get a "function not found" error instead of a clean version warning.
 

@@ -140,7 +140,7 @@ data remove storage datalib:engine color._names
 data remove storage datalib:engine fork_warn
 data remove storage datalib:engine fork_warn_tick
 
-# BUGFIX v6.0.1: datalib.meta scoreboard (used by _rt_origin watermark check)
+# BUGFIX v6.0.0: datalib.meta scoreboard (used by _rt_origin watermark check)
 # was never removed on disable/cleanup, causing scoreboard pollution across reloads.
 scoreboard objectives remove dl.perm_level
 scoreboard objectives remove datalib.meta
