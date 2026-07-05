@@ -21,6 +21,3 @@ rad.json
 *.flf
 #Test results file
 TestResults.xml
-dataLib-MOD/.gradle
-dataLib-MOD/build
-dataLib-MOD/run
