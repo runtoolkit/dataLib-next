@@ -6,9 +6,17 @@
         "SPGoding.datapack-language-server",
         "ms-python.python",
         "ms-python.flake8",
-        "dlyz.md-link-checker"
+        "dlyz.md-link-checker",
+        "vscjava.vscode-java-pack"
       ],
-      "settings": {}
-    }
+      "settings": {
+        "java.compile.nullAnalysis.mode": "automatic"
+      }
+    },
+    "features": {
+      "ghcr.io/devcontainers/features/git:1": {}
+    },
+   "forwardPorts": [8080],
+   "postCreateCommand": "java -version"
   }
 }
