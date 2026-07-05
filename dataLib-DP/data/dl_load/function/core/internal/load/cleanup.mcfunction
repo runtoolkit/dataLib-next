@@ -10,6 +10,11 @@ scoreboard players reset $tick dl.tmp
 scoreboard players reset $pq_depth dl.tmp
 # $epoch intentionally preserved — cooldown expiry times depend on it
 
+data remove storage datalib:input cmd
+data remove storage datalib:input func
+data remove storage datalib:input list
+data remove storage datalib:input player
+data remove storage datalib:input target
 data remove storage datalib:engine queue
 data remove storage datalib:engine events
 data remove storage datalib:engine event_context
@@ -135,7 +140,8 @@ data remove storage datalib:engine color._names
 data remove storage datalib:engine fork_warn
 data remove storage datalib:engine fork_warn_tick
 
-# BUGFIX v6.0.1: datalib.meta scoreboard (used by _rt_origin watermark check)
+# BUGFIX v6.0.0: datalib.meta scoreboard (used by _rt_origin watermark check)
 # was never removed on disable/cleanup, causing scoreboard pollution across reloads.
 scoreboard objectives remove dl.perm_level
 scoreboard objectives remove datalib.meta
+tag @s remove datalib.loadFail

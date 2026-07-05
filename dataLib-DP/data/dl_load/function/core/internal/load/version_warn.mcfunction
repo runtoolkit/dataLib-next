@@ -10,4 +10,4 @@ tellraw @a[tag=datalib.debug] ["",{"text":"[DL] ","color":"#00AAAA","bold":true}
 data modify storage datalib:engine _log_error_tmp set value {message:"[Load] version_warn — version mismatch, load aborted"}
 function datalib:systems/log/error with storage datalib:engine _log_error_tmp
 
-tag @s add datalib.loadFail
+return run tag @s add datalib.loadFail

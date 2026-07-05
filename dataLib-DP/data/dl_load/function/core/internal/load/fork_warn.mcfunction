@@ -31,5 +31,3 @@ tellraw @a[tag=datalib.admin] ["",{"text":"     ","color":"#555555"},{"text":"[v
 # ── Log system entry ──────────────────────────────────────────────
 data modify storage datalib:engine _log_warn_tmp set value {message:"[Load] fork_warn — rt_origin_verified not set, possible modified fork"}
 function datalib:systems/log/warn with storage datalib:engine _log_warn_tmp
-
-tag @s add datalib.loadFail
