@@ -3,18 +3,15 @@ package net.datalib;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
 import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
 import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.minecraft.resources.ResourceLocation;
+import net.fabricmc.fabric.api.resource.SimpleResourceReloadListener;
+import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.PackType;
-import net.minecraft.server.packs.resources.PreparableReloadListener;
-import net.minecraft.server.packs.resources.Resource;
 import net.minecraft.server.packs.resources.ResourceManager;
-import net.minecraft.util.profiling.ProfilerFiller;
 
 import java.io.BufferedReader;
-import java.util.Map;
 import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 
@@ -23,93 +20,78 @@ public class Main implements ModInitializer {
     public static final String MOD_ID = "datalib";
     private static final Gson GSON = new Gson();
 
-    public static final Map<ResourceLocation, Boolean> REGISTERED_FLAGS = new HashMap<>();
+    public static final Map<Identifier, Boolean> REGISTERED_FLAGS = new HashMap<>();
 
     @Override
     public void onInitialize() {
-
         ResourceManagerHelper.get(PackType.SERVER_DATA)
                 .registerReloadListener(new FlagReloadListener());
     }
 
-    public static class FlagReloadListener implements IdentifiableResourceReloadListener {
+    private static class FlagReloadListener
+            implements SimpleResourceReloadListener<Map<Identifier, Boolean>> {
 
         @Override
-        public ResourceLocation getFabricId() {
-            return ResourceLocation.fromNamespaceAndPath(
-                    MOD_ID,
-                    "feature_flag_reload"
-            );
+        public Identifier getFabricId() {
+            return Identifier.fromNamespaceAndPath(MOD_ID, "feature_flag_reload");
         }
 
         @Override
-        public CompletableFuture<Void> reload(
-                PreparationBarrier barrier,
-                ResourceManager resourceManager,
-                ProfilerFiller preparationsProfiler,
-                ProfilerFiller reloadProfiler,
-                Executor backgroundExecutor,
-                Executor gameExecutor
+        public CompletableFuture<Map<Identifier, Boolean>> load(
+                ResourceManager manager,
+                Executor executor
         ) {
+            return CompletableFuture.supplyAsync(() -> {
 
-            return CompletableFuture
-                    .runAsync(() -> {
+                Map<Identifier, Boolean> loaded = new HashMap<>();
 
-                        REGISTERED_FLAGS.clear();
+                manager.listResources(
+                        "data_packs",
+                        id -> id.getPath().endsWith(".json")
+                ).forEach((id, resource) -> {
 
-                        Map<ResourceLocation, Resource> resources =
-                                resourceManager.listResources(
-                                        "data_packs",
-                                        location -> location.getPath().endsWith(".json")
-                                );
+                    try (BufferedReader reader = resource.openAsReader()) {
 
-                        for (Map.Entry<ResourceLocation, Resource> entry : resources.entrySet()) {
+                        JsonObject json = GSON.fromJson(reader, JsonObject.class);
 
-                            try (BufferedReader reader = entry.getValue().openAsReader()) {
-
-                                JsonObject json =
-                                        GSON.fromJson(reader, JsonObject.class);
-
-                                if (json == null)
-                                    continue;
-
-                                if (!json.has("flag_name"))
-                                    continue;
-
-                                if (!json.has("enabled"))
-                                    continue;
-
-                                String namespace =
-                                        entry.getKey().getNamespace();
-
-                                String flag =
-                                        json.get("flag_name").getAsString();
-
-                                boolean enabled =
-                                        json.get("enabled").getAsBoolean();
-
-                                ResourceLocation id =
-                                        ResourceLocation.fromNamespaceAndPath(
-                                                namespace,
-                                                flag
-                                        );
-
-                                REGISTERED_FLAGS.put(id, enabled);
-
-                                System.out.println(
-                                        "[FeatureFlags] Registered "
-                                                + id
-                                                + " = "
-                                                + enabled
-                                );
-
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
+                        if (json == null) {
+                            return;
                         }
 
-                    }, backgroundExecutor)
-                    .thenCompose(barrier::wait);
+                        if (!json.has("flag_name") || !json.has("enabled")) {
+                            return;
+                        }
+
+                        Identifier flagId = Identifier.fromNamespaceAndPath(
+                                id.getNamespace(),
+                                json.get("flag_name").getAsString()
+                        );
+
+                        loaded.put(
+                                flagId,
+                                json.get("enabled").getAsBoolean()
+                        );
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                });
+
+                return loaded;
+
+            }, executor);
+        }
+
+        @Override
+        public CompletableFuture<Void> apply(
+                Map<Identifier, Boolean> data,
+                ResourceManager manager,
+                Executor executor
+        ) {
+            return CompletableFuture.runAsync(() -> {
+                REGISTERED_FLAGS.clear();
+                REGISTERED_FLAGS.putAll(data);
+            }, executor);
         }
     }
 }
