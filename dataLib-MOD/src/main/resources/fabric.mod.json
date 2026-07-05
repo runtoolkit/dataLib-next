@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "id": "dataLib",
+  "id": "datalib",
   "version": "6.0.0",
   "icon": "pack.png",
   "environment": "*",

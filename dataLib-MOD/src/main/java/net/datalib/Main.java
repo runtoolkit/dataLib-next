@@ -1,64 +1,115 @@
-import net.fabricmc.api.ModInitializer;
-import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
-import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
-import net.minecraft.resource.ResourceManager;
-import net.minecraft.resource.ResourceType;
-import net.minecraft.util.Identifier;
+package net.datalib;
+
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.util.HashMap;
-import java.util.Map;
+import net.fabricmc.api.ModInitializer;
+import net.fabricmc.fabric.api.resource.IdentifiableResourceReloadListener;
+import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.server.packs.PackType;
+import net.minecraft.server.packs.resources.PreparableReloadListener;
+import net.minecraft.server.packs.resources.Resource;
+import net.minecraft.server.packs.resources.ResourceManager;
+import net.minecraft.util.profiling.ProfilerFiller;
 
-public class FeatureFlagMod implements ModInitializer {
-    public static final String MOD_ID = "feature_flag_mod";
+import java.io.BufferedReader;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
+
+public class Main implements ModInitializer {
+
+    public static final String MOD_ID = "datalib";
     private static final Gson GSON = new Gson();
 
-    // Kaydedilen flag'leri tutacağımız statik harita
-    public static final Map<Identifier, Boolean> REGISTERED_FLAGS = new HashMap<>();
+    public static final Map<ResourceLocation, Boolean> REGISTERED_FLAGS = new HashMap<>();
 
     @Override
     public void onInitialize() {
-        // Sunucu veri paketlerini dinlemek için Resource Reload Listener ekliyoruz
-        ResourceManagerHelper.get(ResourceType.SERVER_DATA).registerReloadListener(
-            new SimpleSynchronousResourceReloadListener() {
-                
-                @Override
-                public Identifier getFabricId() {
-                    return Identifier.of(MOD_ID, "datapack_feature_reader");
-                }
 
-                @Override
-                public void reload(ResourceManager manager) {
-                    REGISTERED_FLAGS.clear(); // Yeniden yüklemede eski flag'leri temizle
+        ResourceManagerHelper.get(PackType.SERVER_DATA)
+                .registerReloadListener(new FlagReloadListener());
+    }
 
-                    // Veri paketlerindeki namespace yollarında bulunan dosyaları arıyoruz
-                    manager.findResources("data_packs", path -> path.getPath().endsWith(".json"))
-                        .forEach((id, resource) -> {
-                            try (InputStream stream = resource.getInputStream()) {
-                                JsonObject json = GSON.fromJson(new InputStreamReader(stream), JsonObject.class);
+    public static class FlagReloadListener implements IdentifiableResourceReloadListener {
 
-                                // İlgili dosyanın namespace değerini alıyoruz
-                                String namespace = id.getNamespace();
-                                
-                                // JSON içerisindeki değerleri okuyoruz
-                                if (json.has("flag_name") && json.has("enabled")) {
-                                    String flagName = json.get("flag_name").getAsString();
-                                    boolean isEnabled = json.get("enabled").getAsBoolean();
+        @Override
+        public ResourceLocation getFabricId() {
+            return ResourceLocation.fromNamespaceAndPath(
+                    MOD_ID,
+                    "feature_flag_reload"
+            );
+        }
 
-                                    Identifier flagId = Identifier.of(namespace, flagName);
-                                    
-                                    // Flag'i sisteme register ediyoruz (belleğe kaydediyoruz)
-                                    REGISTERED_FLAGS.put(flagId, isEnabled);
-                                    System.out.println("Feature Flag Register Edildi: " + flagId + " = " + isEnabled);
-                                }
+        @Override
+        public CompletableFuture<Void> reload(
+                PreparationBarrier barrier,
+                ResourceManager resourceManager,
+                ProfilerFiller preparationsProfiler,
+                ProfilerFiller reloadProfiler,
+                Executor backgroundExecutor,
+                Executor gameExecutor
+        ) {
+
+            return CompletableFuture
+                    .runAsync(() -> {
+
+                        REGISTERED_FLAGS.clear();
+
+                        Map<ResourceLocation, Resource> resources =
+                                resourceManager.listResources(
+                                        "data_packs",
+                                        location -> location.getPath().endsWith(".json")
+                                );
+
+                        for (Map.Entry<ResourceLocation, Resource> entry : resources.entrySet()) {
+
+                            try (BufferedReader reader = entry.getValue().openAsReader()) {
+
+                                JsonObject json =
+                                        GSON.fromJson(reader, JsonObject.class);
+
+                                if (json == null)
+                                    continue;
+
+                                if (!json.has("flag_name"))
+                                    continue;
+
+                                if (!json.has("enabled"))
+                                    continue;
+
+                                String namespace =
+                                        entry.getKey().getNamespace();
+
+                                String flag =
+                                        json.get("flag_name").getAsString();
+
+                                boolean enabled =
+                                        json.get("enabled").getAsBoolean();
+
+                                ResourceLocation id =
+                                        ResourceLocation.fromNamespaceAndPath(
+                                                namespace,
+                                                flag
+                                        );
+
+                                REGISTERED_FLAGS.put(id, enabled);
+
+                                System.out.println(
+                                        "[FeatureFlags] Registered "
+                                                + id
+                                                + " = "
+                                                + enabled
+                                );
+
                             } catch (Exception e) {
                                 e.printStackTrace();
                             }
-                        });
-                }
-            }
-        );
+                        }
+
+                    }, backgroundExecutor)
+                    .thenCompose(barrier::wait);
+        }
     }
 }
