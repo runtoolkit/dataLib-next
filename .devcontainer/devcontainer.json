@@ -1,5 +1,6 @@
 {
-  "name": "dataLib & Python Dev",
+  "name": "dataLib & Fabric Dev",
+  "remoteUser": "root",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -7,7 +8,8 @@
         "ms-python.python",
         "ms-python.flake8",
         "dlyz.md-link-checker",
-        "vscjava.vscode-java-pack"
+        "vscjava.vscode-java-pack",
+        "vscjava.vscode-gradle"
       ],
       "settings": {
         "java.compile.nullAnalysis.mode": "automatic"
