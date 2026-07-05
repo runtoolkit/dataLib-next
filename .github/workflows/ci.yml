@@ -122,6 +122,34 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
+  build-mod:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v7
+      - name: Repo lock
+        run: |
+          if [ "$GITHUB_REPOSITORY" != "runtoolkit/dataLib-next" ]; then
+            echo "::error::This workflow may only run in runtoolkit/dataLib-next."
+            exit 1
+          fi
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Make gradlew executable
+        run: cd dataLib-MOD && chmod +x gradlew
+      - name: Build Mod
+        run: cd dataLib-MOD && ./gradlew build --stacktrace
+      - name: Upload mod artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dataLib-mod
+          path: dataLib-MOD/build/libs/*.jar
+          retention-days: 14
+          if-no-files-found: error
+
   release:
     needs: build
     runs-on: ubuntu-latest
