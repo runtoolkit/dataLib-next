@@ -111,7 +111,7 @@ jobs:
       - name: Package datapack
         run: |
           cd build
-          zip -r ../dataLib-full.zip dataLib-DP
+          zip -r ../dataLib-full.zip dataLib-DP -x "*/build/*"
           echo "Archive size: $(du -sh ../dataLib-full.zip | cut -f1)"
 
       - name: Upload artifact
@@ -139,14 +139,14 @@ jobs:
           distribution: temurin
           java-version: '25'
       - name: Make gradlew executable
-        run: cd dataLib-MOD && chmod +x gradlew
+        run: cd 1.21.11/dataLib-MOD && chmod +x gradlew
       - name: Build Mod
-        run: cd dataLib-MOD && ./gradlew build --stacktrace
+        run: cd 1.21.11/dataLib-MOD && ./gradlew build --stacktrace
       - name: Upload mod artifact
         uses: actions/upload-artifact@v7
         with:
-          name: dataLib-mod
-          path: dataLib-MOD/build/libs/*.jar
+          name: 1.21.11/dataLib-MOD+1.21.11
+          path: 1.21.11/dataLib-MOD/build/libs/*.jar
           retention-days: 14
           if-no-files-found: error
 
