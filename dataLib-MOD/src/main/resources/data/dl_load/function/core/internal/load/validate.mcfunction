@@ -21,6 +21,7 @@ execute if score #dl.ver_set dl.pre_version matches 1 run execute unless score #
 execute if score #dl.ver_set dl.pre_version matches 1 run execute unless score #dl.patch dl.pre_version matches 0 run scoreboard players set #dl.mismatch dl.pre_version 1
 execute if score #dl.ver_set dl.pre_version matches 1 run execute if score #dl.pre dl.pre_version matches 1.. run scoreboard players set #dl.mismatch dl.pre_version 1
 execute if score #dl.mismatch dl.pre_version matches 1 run function dl_load:core/internal/load/version_warn
+execute if score #dl.mismatch dl.pre_version matches 1 run tag @s add datalib.loadFail
 execute if score #dl.mismatch dl.pre_version matches 1 run return 0
 
 # ── Fork detection ───────────────────────────────────────────────
