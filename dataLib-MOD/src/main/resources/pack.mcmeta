@@ -50,8 +50,8 @@
         "italic": false
       }
     ],
-    "min_format": [107, 1],
-    "max_format": [107, 1]
+    "min_format": [107, 88],
+    "max_format": [107, 88]
   },
   "features": {
     "enabled": [
